@@ -3,7 +3,83 @@ use id3::{self, Content, Frame, TagLike, Timestamp};
 
 pub use id3::Tag as Id3v2InnerTag;
 
-impl_tag!(Id3v2Tag, Id3v2InnerTag, TagType::Id3v2);
+#[derive(Default)]
+pub struct Id3v2Tag {
+    inner: Id3v2InnerTag,
+    config: Config,
+}
+
+impl Id3v2Tag {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn read_from(data: impl Read + Seek) -> Result<Self> {
+        Ok(Self {
+            inner: Id3v2InnerTag::read_from2(data)?,
+            config: Config::default(),
+        })
+    }
+}
+
+impl AudioTagConfig for Id3v2Tag {
+    fn config(&self) -> &Config {
+        &self.config
+    }
+    fn set_config(&mut self, config: Config) {
+        self.config = config.clone();
+    }
+}
+
+use std::any::Any;
+use std::io::{Read, Seek};
+
+impl ToAnyTag for Id3v2Tag {
+    fn to_anytag(&self) -> AnyTag<'_> {
+        self.into()
+    }
+}
+impl ToAny for Id3v2Tag {
+    fn to_any(&self) -> &dyn Any {
+        self
+    }
+    fn to_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+impl AudioTag for Id3v2Tag {}
+impl From<Id3v2Tag> for Id3v2InnerTag {
+    fn from(inp: Id3v2Tag) -> Self {
+        inp.inner
+    }
+}
+impl From<Id3v2InnerTag> for Id3v2Tag {
+    fn from(inp: Id3v2InnerTag) -> Self {
+        Self {
+            inner: inp,
+            config: Config::default(),
+        }
+    }
+}
+impl From<Box<dyn AudioTag + Send + Sync>> for Id3v2Tag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let mut inp = inp;
+        if let Some(t_refmut) = inp.to_any_mut().downcast_mut::<Id3v2Tag>() {
+            let t = std::mem::replace(t_refmut, Id3v2Tag::new());
+            t
+        } else {
+            let mut t = inp.to_dyn_tag(TagType::Id3v2);
+            let t_refmut = t.to_any_mut().downcast_mut::<Id3v2Tag>().unwrap();
+            let t = std::mem::replace(t_refmut, Id3v2Tag::new());
+            t
+        }
+    }
+}
+impl std::convert::From<Box<dyn AudioTag + Send + Sync>> for Id3v2InnerTag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let t: Id3v2Tag = inp.into();
+        t.into()
+    }
+}
 
 impl<'a> From<&'a Id3v2Tag> for AnyTag<'a> {
     fn from(inp: &'a Id3v2Tag) -> Self {

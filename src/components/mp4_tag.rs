@@ -5,7 +5,88 @@ use std::str::FromStr;
 
 pub use mp4ameta::Tag as Mp4InnerTag;
 
-impl_tag!(Mp4Tag, Mp4InnerTag, TagType::Mp4);
+#[derive(Default)]
+pub struct Mp4Tag {
+    inner: Mp4InnerTag,
+    config: Config,
+}
+
+impl Mp4Tag {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn read_from(mut data: impl Read + Seek) -> Result<Self> {
+        Ok(Self {
+            inner: Mp4InnerTag::read_from(&mut data)?,
+            config: Config::default(),
+        })
+    }
+}
+
+impl AudioTagConfig for Mp4Tag {
+    fn config(&self) -> &Config {
+        &self.config
+    }
+    fn set_config(&mut self, config: Config) {
+        self.config = config.clone();
+    }
+}
+
+use std::any::Any;
+use std::io::{Read, Seek};
+
+impl ToAnyTag for Mp4Tag {
+    fn to_anytag(&self) -> AnyTag<'_> {
+        self.into()
+    }
+}
+impl ToAny for Mp4Tag {
+    fn to_any(&self) -> &dyn Any {
+        self
+    }
+    fn to_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl AudioTag for Mp4Tag {}
+
+impl From<Mp4Tag> for Mp4InnerTag {
+    fn from(inp: Mp4Tag) -> Self {
+        inp.inner
+    }
+}
+
+impl From<Mp4InnerTag> for Mp4Tag {
+    fn from(inp: Mp4InnerTag) -> Self {
+        Self {
+            inner: inp,
+            config: Config::default(),
+        }
+    }
+}
+
+impl From<Box<dyn AudioTag + Send + Sync>> for Mp4Tag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let mut inp = inp;
+        if let Some(t_refmut) = inp.to_any_mut().downcast_mut::<Mp4Tag>() {
+            let t = std::mem::replace(t_refmut, Mp4Tag::new());
+            t
+        } else {
+            let mut t = inp.to_dyn_tag(TagType::Mp4);
+            let t_refmut = t.to_any_mut().downcast_mut::<Mp4Tag>().unwrap();
+            let t = std::mem::replace(t_refmut, Mp4Tag::new());
+            t
+        }
+    }
+}
+
+impl From<Box<dyn AudioTag + Send + Sync>> for Mp4InnerTag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let t: Mp4Tag = inp.into();
+        t.into()
+    }
+}
 
 impl<'a> From<&'a Mp4Tag> for AnyTag<'a> {
     fn from(inp: &'a Mp4Tag) -> Self {
@@ -88,9 +169,9 @@ impl<'a> From<AnyTag<'a>> for Mp4Tag {
     }
 }
 
-impl<'a> std::convert::TryFrom<&'a mp4ameta::Data> for Picture<'a> {
-    type Error = crate::Error;
-    fn try_from(inp: &'a mp4ameta::Data) -> crate::Result<Self> {
+impl<'a> TryFrom<&'a mp4ameta::Data> for Picture<'a> {
+    type Error = Error;
+    fn try_from(inp: &'a mp4ameta::Data) -> Result<Self> {
         Ok(match *inp {
             mp4ameta::Data::Png(ref data) => Self {
                 data,
@@ -100,7 +181,7 @@ impl<'a> std::convert::TryFrom<&'a mp4ameta::Data> for Picture<'a> {
                 data,
                 mime_type: MimeType::Jpeg,
             },
-            _ => return Err(crate::Error::NotAPicture),
+            _ => return Err(Error::NotAPicture),
         })
     }
 }
@@ -316,11 +397,11 @@ impl AudioTagEdit for Mp4Tag {
 }
 
 impl AudioTagWrite for Mp4Tag {
-    fn write_to(&mut self, file: &mut File) -> crate::Result<()> {
+    fn write_to(&mut self, file: &mut File) -> Result<()> {
         self.inner.write_to(file)?;
         Ok(())
     }
-    fn write_to_path(&mut self, path: &str) -> crate::Result<()> {
+    fn write_to_path(&mut self, path: &str) -> Result<()> {
         self.inner.write_to_path(path)?;
         Ok(())
     }

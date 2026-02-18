@@ -5,8 +5,80 @@ use std::str::FromStr;
 
 pub use metaflac::Tag as FlacInnerTag;
 
-impl_tag!(FlacTag, FlacInnerTag, TagType::Flac);
+#[derive(Default)]
+pub struct FlacTag {
+    inner: FlacInnerTag,
+    config: Config,
+}
+impl FlacTag {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn read_from(mut data: impl Read + Seek) -> Result<Self> {
+        Ok(Self {
+            inner: FlacInnerTag::read_from(&mut data)?,
+            config: Config::default(),
+        })
+    }
+}
+impl AudioTagConfig for FlacTag {
+    fn config(&self) -> &Config {
+        &self.config
+    }
+    fn set_config(&mut self, config: Config) {
+        self.config = config.clone();
+    }
+}
+use std::any::Any;
+use std::io::{Read, Seek};
 
+impl ToAnyTag for FlacTag {
+    fn to_anytag(&self) -> AnyTag<'_> {
+        self.into()
+    }
+}
+impl ToAny for FlacTag {
+    fn to_any(&self) -> &dyn Any {
+        self
+    }
+    fn to_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+impl AudioTag for FlacTag {}
+impl From<FlacTag> for FlacInnerTag {
+    fn from(inp: FlacTag) -> Self {
+        inp.inner
+    }
+}
+impl From<FlacInnerTag> for FlacTag {
+    fn from(inp: FlacInnerTag) -> Self {
+        Self {
+            inner: inp,
+            config: Config::default(),
+        }
+    }
+}
+impl From<Box<dyn AudioTag + Send + Sync>> for FlacTag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let mut inp = inp;
+        if let Some(t_refmut) = inp.to_any_mut().downcast_mut::<FlacTag>() {
+            let t = std::mem::replace(t_refmut, FlacTag::new());
+            t
+        } else {
+            let mut t = inp.to_dyn_tag(TagType::Flac);
+            let t_refmut = t.to_any_mut().downcast_mut::<FlacTag>().unwrap();
+            let t = std::mem::replace(t_refmut, FlacTag::new());
+            t
+        }
+    }
+}
+impl std::convert::From<Box<dyn AudioTag + Send + Sync>> for FlacInnerTag {
+    fn from(inp: Box<dyn AudioTag + Send + Sync>) -> Self {
+        let t: FlacTag = inp.into();
+        t.into()
+    }
+}
 impl<'a> From<AnyTag<'a>> for FlacTag {
     fn from(inp: AnyTag<'a>) -> Self {
         let mut t = FlacTag::default();

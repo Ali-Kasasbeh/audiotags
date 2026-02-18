@@ -61,8 +61,6 @@
 //! tag.write_to_path("test.mp3").expect("Fail to save");
 //! ```
 
-pub(crate) use audiotags_macro::*;
-
 pub mod anytag;
 pub use anytag::*;
 
@@ -83,9 +81,9 @@ pub use config::Config;
 
 use std::convert::From;
 use std::fs::File;
-use std::path::Path;
 
 pub use std::convert::{TryFrom, TryInto};
+use std::io::{Read, Seek};
 
 /// A builder for `Box<dyn AudioTag>`. If you do not want a trait object, you can use individual types.
 ///
@@ -122,6 +120,7 @@ impl Tag {
     pub fn new() -> Self {
         Self::default()
     }
+
     /// Specify the tag type
     pub fn with_tag_type(self, tag_type: TagType) -> Self {
         Self {
@@ -129,6 +128,7 @@ impl Tag {
             config: self.config,
         }
     }
+
     /// Specify configuration, if you do not want to use the default
     pub fn with_config(self, config: Config) -> Self {
         Self {
@@ -136,31 +136,25 @@ impl Tag {
             config,
         }
     }
-    pub fn read_from_path(
+
+    pub fn read_from(
         &self,
-        path: impl AsRef<Path>,
-    ) -> crate::Result<Box<dyn AudioTag + Send + Sync>> {
-        match self.tag_type.unwrap_or(TagType::try_from_ext(
-            path.as_ref()
-                .extension()
-                .ok_or(Error::UnknownFileExtension(String::new()))?
-                .to_string_lossy()
-                .to_string()
-                .to_lowercase()
-                .as_str(),
-        )?) {
+        data: impl Read + Seek,
+        extension: &str,
+    ) -> Result<Box<dyn AudioTag + Send + Sync>> {
+        match self.tag_type.unwrap_or(TagType::try_from_ext(extension)?) {
             TagType::Id3v2 => Ok(Box::new({
-                let mut t = Id3v2Tag::read_from_path(path)?;
+                let mut t = Id3v2Tag::read_from(data)?;
                 t.set_config(self.config);
                 t
             })),
             TagType::Mp4 => Ok(Box::new({
-                let mut t = Mp4Tag::read_from_path(path)?;
+                let mut t = Mp4Tag::read_from(data)?;
                 t.set_config(self.config);
                 t
             })),
             TagType::Flac => Ok(Box::new({
-                let mut t = FlacTag::read_from_path(path)?;
+                let mut t = FlacTag::read_from(data)?;
                 t.set_config(self.config);
                 t
             })),
